@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
- check-reviews:
+ check-reviewers:
    runs-on: ubuntu-latest
    steps:
      - name: Check Required Reviews
@@ -59,8 +59,17 @@ jobs:
            fi
          done
 
-         # Create comment body
-         COMMENT_BODY="## 🔍 Required Review Status\n\n"
+          # Create comment body with proper markdown line breaks
+          COMMENT_BODY=$'## 🔍 Required Review Status\n\n'
+                  
+          if [ ${#MISSING_APPROVERS[@]} -gt 0 ]; then
+          COMMENT_BODY+=$'### ⏳ Waiting for approvals from:\n'
+          for approver in "${MISSING_APPROVERS[@]}"; do
+            COMMENT_BODY+=$"* @$approver\n"
+          done
+          else
+          COMMENT_BODY+=$'### ✅ All required approvals received!\n'
+          fi
          
          # Get existing review status comment
          OLD_COMMENT_ID=$(gh api repos/${{ github.repository }}/issues/$PR_NUMBER/comments \
