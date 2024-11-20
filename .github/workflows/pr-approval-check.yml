@@ -18,16 +18,16 @@ jobs:
           
           declare -A PATH_APPROVERS
           PATH_APPROVERS=(
-            ["/adam/"]="adamvg"
-            ["/chris/"]="hardingchris"
-            ["/both/"]="thejoeker12 hardingchris"
+            ["adam/"]="adamvg"
+            ["chris/"]="hardingchris"
+            ["both/"]="thejoeker12 hardingchris"
           )
           
           # Build required approvers list based on changed files
           REQUIRED_APPROVERS=()
           for file in $CHANGED_FILES; do
             for path in "${!PATH_APPROVERS[@]}"; do
-              if [[ $file == *"$path"* ]]; then
+              if [[ $file =~ ^${path}.*$ ]]; then
                 IFS=' ' read -ra APPROVERS <<< "${PATH_APPROVERS[$path]}"
                 REQUIRED_APPROVERS+=("${APPROVERS[@]}")
               fi
