@@ -1,49 +1,90 @@
+name: PR Review Check
+
 on:
-  pull_request:
-    types: [opened, reopened, synchronize, ready_for_review]
-  pull_request_review:
-    types: [submitted, edited, dismissed]
+ pull_request:
+   types: [opened, reopened, synchronize, ready_for_review]
+ pull_request_review:
+   types: [submitted, edited, dismissed]
+
+permissions:
+ pull-requests: write
+ contents: read
 
 jobs:
-  check-reviews:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check Required Reviews
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          PR_NUMBER=${{ github.event.pull_request.number }}
-          CHANGED_FILES=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/files --jq '.[].filename')
-          
-          declare -A PATH_APPROVERS
-          PATH_APPROVERS=( 
-            ["/adam/"]="adamvg" 
-            ["/chris/"]="hardingchris"
-            ["/both/"]="thejoeker12 hardingchris"
-          )
+ check-reviewers:
+   runs-on: ubuntu-latest
+   steps:
+     - name: Check Required Reviews
+       env:
+         GH_TOKEN: ${{ github.token }}
+       run: |
+         PR_NUMBER=${{ github.event.pull_request.number }}
+         CHANGED_FILES=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/files --jq '.[].filename')
          
-          # Build required approvers list based on changed files
-          REQUIRED_APPROVERS=()
-          for path in "${!PATH_APPROVERS[@]}"; do
-              if [[ $file == *"$path"* ]]; then
-                # Split space-separated approvers into array
-                IFS=' ' read -ra APPROVERS <<< "${PATH_APPROVERS[$path]}"
-                REQUIRED_APPROVERS+=("${APPROVERS[@]}")
-              fi
-            done
-          
-          # Remove duplicates
-          REQUIRED_APPROVERS=($(echo "${REQUIRED_APPROVERS[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
-          
-          # Get reviews
-          REVIEWS=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews)
-          
-          # Check approvals
-          for approver in "${REQUIRED_APPROVERS[@]}"; do
-            if ! echo "$REVIEWS" | jq -e --arg approver "$approver" '.[] | select(.state=="APPROVED" and (.user.login==$approver or .user.teams[].name==$approver))' > /dev/null; then
-              echo "Missing approval from $approver"
-              exit 1
-            fi
-          done
-          
-          echo "All required approvals received"
+         declare -A PATH_APPROVERS
+         PATH_APPROVERS=(
+           ["adam/"]="adamvg"
+           ["chris/"]="hardingchris"
+           ["both/"]="thejoeker12 hardingchris"
+         )
+         
+         # Build required approvers list
+         REQUIRED_APPROVERS=()
+         for file in $CHANGED_FILES; do
+           for path in "${!PATH_APPROVERS[@]}"; do
+             if [[ $file =~ ^${path}.*$ ]]; then
+               IFS=' ' read -ra APPROVERS <<< "${PATH_APPROVERS[$path]}"
+               REQUIRED_APPROVERS+=("${APPROVERS[@]}")
+             fi
+           done
+         done
+         
+         # Remove duplicates
+         REQUIRED_APPROVERS=($(echo "${REQUIRED_APPROVERS[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
+         
+         # Exit if no approvers required
+         if [ ${#REQUIRED_APPROVERS[@]} -eq 0 ]; then
+           echo "No approvers required for changed files"
+           exit 0
+         fi
+         
+         # Get reviews
+         REVIEWS=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews)
+         
+         # Check approvals
+         MISSING_APPROVERS=()
+         for approver in "${REQUIRED_APPROVERS[@]}"; do
+           if ! echo "$REVIEWS" | jq -e --arg approver "$approver" '.[] | select(.state=="APPROVED" and (.user.login==$approver or .user.teams[].name==$approver))' > /dev/null; then
+             MISSING_APPROVERS+=("$approver")
+           fi
+         done
+
+         # Create markdown comment with proper formatting
+         COMMENT="## 🔍 Required Review Status"
+         COMMENT="$COMMENT"$'\n\n'
+         
+         if [ ${#MISSING_APPROVERS[@]} -gt 0 ]; then
+           COMMENT="$COMMENT### ⏳ Waiting for approvals from:"$'\n'
+           for approver in "${MISSING_APPROVERS[@]}"; do
+             COMMENT="$COMMENT* @$approver"$'\n'
+           done
+         else
+           COMMENT="$COMMENT### ✅ All required approvals received!"$'\n'
+         fi
+
+         # Get existing review status comment
+         OLD_COMMENT_ID=$(gh api repos/${{ github.repository }}/issues/$PR_NUMBER/comments \
+           --jq '.[] | select(.body | startswith("## 🔍 Required Review Status")) | .id')
+         
+         # Delete old comment if it exists
+         if [ ! -z "$OLD_COMMENT_ID" ]; then
+           gh api repos/${{ github.repository }}/issues/comments/$OLD_COMMENT_ID -X DELETE
+         fi
+         
+         # Post new comment
+         gh api repos/${{ github.repository }}/issues/$PR_NUMBER/comments -f body="$COMMENT"
+         
+         if [ ${#MISSING_APPROVERS[@]} -gt 0 ]; then
+           echo "Missing approvals from: ${MISSING_APPROVERS[*]}"
+           exit 1
+         fi
