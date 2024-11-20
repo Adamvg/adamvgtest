@@ -1,9 +1,14 @@
 name: PR Review Check
+
 on:
  pull_request:
    types: [opened, reopened, synchronize, ready_for_review]
  pull_request_review:
    types: [submitted, edited, dismissed]
+
+permissions:
+  pull-requests: write
+  contents: read
 
 jobs:
  check-reviews:
