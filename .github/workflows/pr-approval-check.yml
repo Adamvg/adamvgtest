@@ -1,50 +1,49 @@
-name: PR Review Check
-on: pull_request_review
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
 
 jobs:
- check-reviews:
-   runs-on: ubuntu-latest
-   steps:
-     - name: Checkout code
-       uses: actions/checkout@v4
-     
-     - name: Check Required Reviews
-       env:
-         GH_TOKEN: ${{ github.token }}
-       run: |
-         PR_NUMBER=${{ github.event.pull_request.number }}
+  check-reviews:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Required Reviews
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          CHANGED_FILES=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/files --jq '.[].filename')
+          
+          declare -A PATH_APPROVERS
+          PATH_APPROVERS=( 
+            ["/adam/"]="adamvg" 
+            ["/chris/"]="hardingchris"
+            ["/both/"]="thejoeker12 hardingchris"
+          )
          
-         # Get changed files
-         CHANGED_FILES=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/files --jq '.[].filename')
-         
-         # Define required approvers based on paths
-         declare -A PATH_APPROVERS
-         PATH_APPROVERS["/adam/"]=adamvg
-         PATH_APPROVERS["/chris/"]=hardingchris
-         PATH_APPROVERS["/both/"]=("hardingchris" "thejoeker")
-         
-         # Build required approvers list based on changed files
-         REQUIRED_APPROVERS=()
-         for path in "${!PATH_APPROVERS[@]}"; do
-            if [[ $file == *"$path"* ]]; then
-              # Split space-separated approvers into array
-              IFS=' ' read -ra APPROVERS <<< "${PATH_APPROVERS[$path]}"
-              REQUIRED_APPROVERS+=("${APPROVERS[@]}")
+          # Build required approvers list based on changed files
+          REQUIRED_APPROVERS=()
+          for path in "${!PATH_APPROVERS[@]}"; do
+              if [[ $file == *"$path"* ]]; then
+                # Split space-separated approvers into array
+                IFS=' ' read -ra APPROVERS <<< "${PATH_APPROVERS[$path]}"
+                REQUIRED_APPROVERS+=("${APPROVERS[@]}")
+              fi
+            done
+          
+          # Remove duplicates
+          REQUIRED_APPROVERS=($(echo "${REQUIRED_APPROVERS[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
+          
+          # Get reviews
+          REVIEWS=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews)
+          
+          # Check approvals
+          for approver in "${REQUIRED_APPROVERS[@]}"; do
+            if ! echo "$REVIEWS" | jq -e --arg approver "$approver" '.[] | select(.state=="APPROVED" and (.user.login==$approver or .user.teams[].name==$approver))' > /dev/null; then
+              echo "Missing approval from $approver"
+              exit 1
             fi
           done
-         
-         # Remove duplicates
-         REQUIRED_APPROVERS=($(echo "${REQUIRED_APPROVERS[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
-         
-         # Get reviews
-         REVIEWS=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews)
-         
-         # Check approvals
-         for approver in "${REQUIRED_APPROVERS[@]}"; do
-           if ! echo "$REVIEWS" | jq -e --arg approver "$approver" '.[] | select(.state=="APPROVED" and (.user.login==$approver or .user.teams[].name==$approver))' > /dev/null; then
-             echo "Missing approval from $approver"
-             exit 1
-           fi
-         done
-         
-         echo "All required approvals received"
+          
+          echo "All required approvals received"
