@@ -7,8 +7,8 @@ on:
    types: [submitted, edited, dismissed]
 
 permissions:
-  pull-requests: write
-  contents: read
+ pull-requests: write
+ contents: read
 
 jobs:
  check-reviewers:
@@ -59,27 +59,19 @@ jobs:
            fi
          done
 
-          COMMENT_BODY=$(cat << 'EOF'
-          ## 🔍 Required Review Status
-
-          EOF
-          )
-
-          if [ ${#MISSING_APPROVERS[@]} -gt 0 ]; then
-          COMMENT_BODY+=$(cat << 'EOF'
-          ### ⏳ Waiting for approvals from:
-          EOF
-          )
-          for approver in "${MISSING_APPROVERS[@]}"; do
-            COMMENT_BODY+=$'\n* @'"$approver"
-          done
-          else
-          COMMENT_BODY+=$(cat << 'EOF'
-          ### ✅ All required approvals received!
-          EOF
-          )
-          fi
+         # Create base comment
+         COMMENT_BODY="## 🔍 Required Review Status\n\n"
          
+         # Add status section
+         if [ ${#MISSING_APPROVERS[@]} -gt 0 ]; then
+           COMMENT_BODY+="### ⏳ Waiting for approvals from:\n"
+           for approver in "${MISSING_APPROVERS[@]}"; do
+             COMMENT_BODY+="* @$approver\n"
+           done
+         else
+           COMMENT_BODY+="### ✅ All required approvals received!\n"
+         fi
+
          # Get existing review status comment
          OLD_COMMENT_ID=$(gh api repos/${{ github.repository }}/issues/$PR_NUMBER/comments \
            --jq '.[] | select(.body | startswith("## 🔍 Required Review Status")) | .id')
@@ -89,20 +81,10 @@ jobs:
            gh api repos/${{ github.repository }}/issues/comments/$OLD_COMMENT_ID -X DELETE
          fi
          
+         # Post new comment
+         gh api repos/${{ github.repository }}/issues/$PR_NUMBER/comments -f body="$COMMENT_BODY"
+         
          if [ ${#MISSING_APPROVERS[@]} -gt 0 ]; then
-           COMMENT_BODY+="### ⏳ Waiting for approvals from:\n"
-           for approver in "${MISSING_APPROVERS[@]}"; do
-             COMMENT_BODY+="- @$approver\n"
-           done
-           
            echo "Missing approvals from: ${MISSING_APPROVERS[*]}"
-           
-           # Post new comment
-           gh api repos/${{ github.repository }}/issues/$PR_NUMBER/comments -f body="$COMMENT_BODY"
            exit 1
-         else
-           COMMENT_BODY+="### ✅ All required approvals received!\n"
-           # Post new comment
-           gh api repos/${{ github.repository }}/issues/$PR_NUMBER/comments -f body="$COMMENT_BODY"
-           echo "All required approvals received"
          fi
