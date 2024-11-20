@@ -1,3 +1,4 @@
+name: PR Review Check
 on:
   pull_request:
     types: [opened, reopened, synchronize, ready_for_review]
@@ -16,27 +17,39 @@ jobs:
           CHANGED_FILES=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/files --jq '.[].filename')
           
           declare -A PATH_APPROVERS
-          PATH_APPROVERS=( 
-            ["/adam/"]="adamvg" 
+          PATH_APPROVERS=(
+            ["/adam/"]="adamvg"
             ["/chris/"]="hardingchris"
             ["/both/"]="thejoeker12 hardingchris"
           )
-         
+          
           # Build required approvers list based on changed files
           REQUIRED_APPROVERS=()
-          for path in "${!PATH_APPROVERS[@]}"; do
+          for file in $CHANGED_FILES; do
+            for path in "${!PATH_APPROVERS[@]}"; do
               if [[ $file == *"$path"* ]]; then
-                # Split space-separated approvers into array
                 IFS=' ' read -ra APPROVERS <<< "${PATH_APPROVERS[$path]}"
                 REQUIRED_APPROVERS+=("${APPROVERS[@]}")
               fi
             done
+          done
           
-          # Remove duplicates
-          REQUIRED_APPROVERS=($(echo "${REQUIRED_APPROVERS[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
+          # Debug output
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+          echo "Required approvers:"
+          echo "${REQUIRED_APPROVERS[@]}"
+          
+          # Exit if no approvers required
+          if [ ${#REQUIRED_APPROVERS[@]} -eq 0 ]; then
+            echo "No approvers required for changed files"
+            exit 0
+          fi
           
           # Get reviews
           REVIEWS=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews)
+          echo "Reviews:"
+          echo "$REVIEWS"
           
           # Check approvals
           for approver in "${REQUIRED_APPROVERS[@]}"; do
