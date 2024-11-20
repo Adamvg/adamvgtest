@@ -59,17 +59,17 @@ jobs:
            fi
          done
 
-         # Create base comment
-         COMMENT_BODY="## 🔍 Required Review Status\n\n"
+         # Create markdown comment with proper formatting
+         COMMENT="## 🔍 Required Review Status"
+         COMMENT="$COMMENT"$'\n\n'
          
-         # Add status section
          if [ ${#MISSING_APPROVERS[@]} -gt 0 ]; then
-           COMMENT_BODY+="### ⏳ Waiting for approvals from:\n"
+           COMMENT="$COMMENT### ⏳ Waiting for approvals from:"$'\n'
            for approver in "${MISSING_APPROVERS[@]}"; do
-             COMMENT_BODY+="* @$approver\n"
+             COMMENT="$COMMENT* @$approver"$'\n'
            done
          else
-           COMMENT_BODY+="### ✅ All required approvals received!\n"
+           COMMENT="$COMMENT### ✅ All required approvals received!"$'\n'
          fi
 
          # Get existing review status comment
@@ -82,7 +82,7 @@ jobs:
          fi
          
          # Post new comment
-         gh api repos/${{ github.repository }}/issues/$PR_NUMBER/comments -f body="$COMMENT_BODY"
+         gh api repos/${{ github.repository }}/issues/$PR_NUMBER/comments -f body="$COMMENT"
          
          if [ ${#MISSING_APPROVERS[@]} -gt 0 ]; then
            echo "Missing approvals from: ${MISSING_APPROVERS[*]}"
