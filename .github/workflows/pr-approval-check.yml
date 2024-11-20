@@ -59,16 +59,25 @@ jobs:
            fi
          done
 
-          # Create comment body with proper markdown line breaks
-          COMMENT_BODY=$'## 🔍 Required Review Status\n\n'
-                  
+          COMMENT_BODY=$(cat << 'EOF'
+          ## 🔍 Required Review Status
+
+          EOF
+          )
+
           if [ ${#MISSING_APPROVERS[@]} -gt 0 ]; then
-          COMMENT_BODY+=$'### ⏳ Waiting for approvals from:\n'
+          COMMENT_BODY+=$(cat << 'EOF'
+          ### ⏳ Waiting for approvals from:
+          EOF
+          )
           for approver in "${MISSING_APPROVERS[@]}"; do
-            COMMENT_BODY+=$"* @$approver\n"
+            COMMENT_BODY+=$'\n* @'"$approver"
           done
           else
-          COMMENT_BODY+=$'### ✅ All required approvals received!\n'
+          COMMENT_BODY+=$(cat << 'EOF'
+          ### ✅ All required approvals received!
+          EOF
+          )
           fi
          
          # Get existing review status comment
